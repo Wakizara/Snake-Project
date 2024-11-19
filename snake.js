@@ -406,7 +406,7 @@ function checkWin() {
     
     for (const aiSnake of aiSnakes) {
         if (aiSnake.body.length >= 10) {
-            alert('Un serpent IA a gagné !');
+            alert('Un serpent IA est vainqueur !');
             resetGame();
             return true;
         }
