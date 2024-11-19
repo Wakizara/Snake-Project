@@ -75,11 +75,7 @@ function drawGame() {
     moveSnake();
     moveAISnakes();
 
-    if (gameOver()) {
-        alert('Game Over! Score: ' + score);
-        resetGame();
-        return;
-    }
+    checkWin();
 
     clearCanvas();
     drawFood();
@@ -91,8 +87,29 @@ function drawGame() {
 
 function moveSnake() {
     const head = { x: snake[0].x + velocityX, y: snake[0].y + velocityY };
+    
+    // Gestion du wrap-around pour le serpent
+    if (head.x < 0) head.x = tileCount - 1;
+    if (head.x >= tileCount) head.x = 0;
+    if (head.y < 0) head.y = tileCount - 1;
+    if (head.y >= tileCount) head.y = 0;
+    
     snake.unshift(head);
-    if (!eatFood()) {
+    
+    // Vérifier si on peut manger un serpent IA (seulement si assez grand)
+    let snakeAte = false;
+    if (snake.length >= 5) {
+        for (let i = aiSnakes.length - 1; i >= 0; i--) {
+            const aiSnake = aiSnakes[i];
+            if (canEatSnake(snake, aiSnake.body, aiSnake.velocityX, aiSnake.velocityY)) {
+                score += aiSnake.body.length * 5;
+                resetAISnake(aiSnake);
+                snakeAte = true;
+            }
+        }
+    }
+    
+    if (!eatFood() && !snakeAte) {
         snake.pop();
     }
 }
@@ -164,6 +181,24 @@ function moveAISnakes() {
         if (!hasCollision) {
             aiSnake.body.unshift(newHead);
             
+            let aiSnakeAte = false;
+            
+            // Vérifier si l'IA peut manger d'autres serpents IA
+            for (let otherSnake of aiSnakes) {
+                if (otherSnake !== aiSnake && 
+                    canEatSnake(aiSnake.body, otherSnake.body, otherSnake.velocityX, otherSnake.velocityY)) {
+                    aiSnake.score += otherSnake.body.length * 5;
+                    resetAISnake(otherSnake);
+                    aiSnakeAte = true;
+                }
+            }
+            
+            // Vérifier si l'IA peut manger le serpent du joueur
+            if (snake.length >= 5 && canEatSnake(aiSnake.body, snake, velocityX, velocityY)) {
+                handleCollision();
+                return;
+            }
+            
             // Vérifier si le serpent IA mange la nourriture
             if (newHead.x === food.x && newHead.y === food.y) {
                 food = {
@@ -171,7 +206,10 @@ function moveAISnakes() {
                     y: Math.floor(Math.random() * tileCount)
                 };
                 aiSnake.score += 10;
-            } else {
+                aiSnakeAte = true;
+            }
+            
+            if (!aiSnakeAte) {
                 aiSnake.body.pop();
             }
         }
@@ -191,41 +229,36 @@ function checkAICollision(newHead, currentSnake) {
         }
     }
     
-    // Vérifier les collisions avec le serpent du joueur
-    for (const part of snake) {
-        if (newHead.x === part.x && newHead.y === part.y) {
-            return true;
+    // On ignore complètement les collisions avec le serpent du joueur s'il est petit
+    if (snake.length >= 5) {
+        for (const part of snake) {
+            if (newHead.x === part.x && newHead.y === part.y) {
+                return true;
+            }
         }
     }
     
     return false;
 }
 
-function gameOver() {
+function handleCollision() {
+    const currentLength = snake.length;
     const head = snake[0];
     
-    // Collision avec les murs
-    if (head.x < 0 || head.x >= tileCount || head.y < 0 || head.y >= tileCount) {
-        return true;
+    if (currentLength <= 3) {
+        // Si le serpent a 3 carrés ou moins, on reste à 1 carré
+        snake = [{ x: head.x, y: head.y }];
+    } else {
+        // Sinon on perd 2 carrés
+        snake = snake.slice(0, currentLength - 2);
     }
-
-    // Collision avec soi-même
-    for (let i = 1; i < snake.length; i++) {
-        if (head.x === snake[i].x && head.y === snake[i].y) {
-            return true;
-        }
-    }
-
-    // Collision avec les serpents IA
-    for (const aiSnake of aiSnakes) {
-        for (const part of aiSnake.body) {
-            if (head.x === part.x && head.y === part.y) {
-                return true;
-            }
-        }
-    }
-
-    return false;
+    
+    // Réinitialiser la vélocité
+    velocityX = 0;
+    velocityY = 0;
+    
+    // Ajuster le score en conséquence
+    score = snake.length * 10;
 }
 
 function clearCanvas() {
@@ -274,6 +307,7 @@ function resetGame() {
     aiSnakes.forEach(aiSnake => {
         aiSnake.velocityX = 0;
         aiSnake.velocityY = 0;
+        aiSnake.score = 0;
     });
     food = {
         x: Math.floor(Math.random() * tileCount),
@@ -282,6 +316,125 @@ function resetGame() {
     velocityX = 0;
     velocityY = 0;
     score = 0;
+}
+
+// Ajout d'une fonction pour vérifier si un serpent peut en manger un autre
+function canEatSnake(predator, prey, preyVelocityX, preyVelocityY) {
+    if (predator.length <= 5) return false;
+    
+    const predatorHead = predator[0];
+    const preyHead = prey[0];
+    
+    // Vérifier si les têtes sont au même endroit
+    if (predatorHead.x === preyHead.x && predatorHead.y === preyHead.y) {
+        // Déterminer la direction du serpent proie
+        const preyDirection = {
+            x: preyVelocityX,
+            y: preyVelocityY
+        };
+        
+        // Calculer la position "derrière" la proie
+        const behindPrey = {
+            x: preyHead.x - preyDirection.x,
+            y: preyHead.y - preyDirection.y
+        };
+        
+        // Vérifier si le prédateur vient de derrière
+        return predatorHead.x === behindPrey.x && predatorHead.y === behindPrey.y;
+    }
+    
+    return false;
+}
+
+// Nouvelle fonction pour réinitialiser un serpent IA
+function resetAISnake(aiSnake) {
+    // Trouver une position aléatoire libre
+    let newX, newY;
+    do {
+        newX = Math.floor(Math.random() * tileCount);
+        newY = Math.floor(Math.random() * tileCount);
+    } while (isPositionOccupied(newX, newY));
+    
+    aiSnake.body = [{ x: newX, y: newY }];
+    aiSnake.velocityX = 0;
+    aiSnake.velocityY = 0;
+    aiSnake.score = 0;
+}
+
+// Fonction utilitaire pour vérifier si une position est occupée
+function isPositionOccupied(x, y) {
+    // Vérifier le serpent du joueur
+    if (snake.some(part => part.x === x && part.y === y)) return true;
+    
+    // Vérifier les serpents IA
+    for (const aiSnake of aiSnakes) {
+        if (aiSnake.body.some(part => part.x === x && part.y === y)) return true;
+    }
+    
+    // Vérifier la nourriture
+    if (food.x === x && food.y === y) return true;
+    
+    return false;
+}
+
+// Remplacer la fonction gameOver par checkWin
+function checkWin() {
+    // Vérifier si un serpent a atteint la taille 10
+    if (snake.length >= 10) {
+        alert('Vous avez gagné ! Score: ' + score);
+        resetGame();
+        return true;
+    }
+    
+    for (const aiSnake of aiSnakes) {
+        if (aiSnake.body.length >= 10) {
+            alert('Un serpent IA a gagné !');
+            resetGame();
+            return true;
+        }
+    }
+    
+    // Gérer les collisions sans game over
+    const head = snake[0];
+    let collision = false;
+    
+    // Wrap-around pour les murs
+    if (head.x < 0) {
+        snake[0].x = tileCount - 1;
+    } else if (head.x >= tileCount) {
+        snake[0].x = 0;
+    } else if (head.y < 0) {
+        snake[0].y = tileCount - 1;
+    } else if (head.y >= tileCount) {
+        snake[0].y = 0;
+    }
+
+    // Vérifier collision avec soi-même
+    for (let i = 1; i < snake.length; i++) {
+        if (head.x === snake[i].x && head.y === snake[i].y) {
+            collision = true;
+            break;
+        }
+    }
+
+    // Vérifier collision avec les serpents IA seulement si assez grand
+    if (snake.length >= 5) {
+        for (const aiSnake of aiSnakes) {
+            for (const part of aiSnake.body) {
+                if (head.x === part.x && head.y === part.y) {
+                    collision = true;
+                    break;
+                }
+            }
+            if (collision) break;
+        }
+    }
+
+    if (collision) {
+        handleCollision();
+    }
+
+    return false;
 }
 
 drawGame(); 
