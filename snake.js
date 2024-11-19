@@ -96,16 +96,26 @@ function moveSnake() {
     
     snake.unshift(head);
     
-    // Vérifier si on peut manger un serpent IA (seulement si assez grand)
     let snakeAte = false;
-    if (snake.length >= 5) {
-        for (let i = aiSnakes.length - 1; i >= 0; i--) {
-            const aiSnake = aiSnakes[i];
-            if (canEatSnake(snake, aiSnake.body, aiSnake.velocityX, aiSnake.velocityY)) {
-                score += aiSnake.body.length * 5;
+    // On vérifie pour chaque serpent IA
+    for (let i = aiSnakes.length - 1; i >= 0; i--) {
+        const aiSnake = aiSnakes[i];
+        const collisionIndex = canEatSnake(snake, aiSnake.body, aiSnake.velocityX, aiSnake.velocityY);
+        
+        if (collisionIndex !== -1) {
+            // On gagne 1 point par carré mangé
+            const eatenParts = aiSnake.body.length - collisionIndex;
+            score += eatenParts;
+            
+            // On garde seulement la partie avant la collision
+            aiSnake.body = aiSnake.body.slice(0, collisionIndex);
+            
+            // Si le serpent est complètement mangé, on le réinitialise
+            if (aiSnake.body.length === 0) {
                 resetAISnake(aiSnake);
-                snakeAte = true;
             }
+            
+            snakeAte = true;
         }
     }
     
@@ -185,17 +195,37 @@ function moveAISnakes() {
             
             // Vérifier si l'IA peut manger d'autres serpents IA
             for (let otherSnake of aiSnakes) {
-                if (otherSnake !== aiSnake && 
-                    canEatSnake(aiSnake.body, otherSnake.body, otherSnake.velocityX, otherSnake.velocityY)) {
-                    aiSnake.score += otherSnake.body.length * 5;
-                    resetAISnake(otherSnake);
-                    aiSnakeAte = true;
+                if (otherSnake !== aiSnake) {
+                    const collisionIndex = canEatSnake(aiSnake.body, otherSnake.body, otherSnake.velocityX, otherSnake.velocityY);
+                    if (collisionIndex !== -1) {
+                        // L'IA gagne 1 point par carré mangé
+                        const eatenParts = otherSnake.body.length - collisionIndex;
+                        aiSnake.score += eatenParts;
+                        
+                        // On garde seulement la partie avant la collision
+                        otherSnake.body = otherSnake.body.slice(0, collisionIndex);
+                        
+                        // Si le serpent est complètement mangé, on le réinitialise
+                        if (otherSnake.body.length === 0) {
+                            resetAISnake(otherSnake);
+                        }
+                        
+                        aiSnakeAte = true;
+                    }
                 }
             }
             
             // Vérifier si l'IA peut manger le serpent du joueur
-            if (snake.length >= 5 && canEatSnake(aiSnake.body, snake, velocityX, velocityY)) {
-                handleCollision();
+            const playerCollisionIndex = canEatSnake(aiSnake.body, snake, velocityX, velocityY);
+            if (playerCollisionIndex !== -1) {
+                // Réduire la taille du serpent du joueur
+                snake = snake.slice(0, playerCollisionIndex);
+                if (snake.length === 0) {
+                    snake = [{ x: Math.floor(tileCount/2), y: Math.floor(tileCount/2) }];
+                    velocityX = 0;
+                    velocityY = 0;
+                }
+                score = snake.length * 10;
                 return;
             }
             
@@ -320,30 +350,18 @@ function resetGame() {
 
 // Ajout d'une fonction pour vérifier si un serpent peut en manger un autre
 function canEatSnake(predator, prey, preyVelocityX, preyVelocityY) {
-    if (predator.length <= 5) return false;
-    
     const predatorHead = predator[0];
-    const preyHead = prey[0];
     
-    // Vérifier si les têtes sont au même endroit
-    if (predatorHead.x === preyHead.x && predatorHead.y === preyHead.y) {
-        // Déterminer la direction du serpent proie
-        const preyDirection = {
-            x: preyVelocityX,
-            y: preyVelocityY
-        };
-        
-        // Calculer la position "derrière" la proie
-        const behindPrey = {
-            x: preyHead.x - preyDirection.x,
-            y: preyHead.y - preyDirection.y
-        };
-        
-        // Vérifier si le prédateur vient de derrière
-        return predatorHead.x === behindPrey.x && predatorHead.y === behindPrey.y;
+    // On vérifie si la tête du prédateur touche n'importe quelle partie de la proie
+    for (let i = 0; i < prey.length; i++) {
+        const preyPart = prey[i];
+        if (predatorHead.x === preyPart.x && predatorHead.y === preyPart.y) {
+            // On retourne l'index de la partie touchée pour savoir où couper
+            return i;
+        }
     }
     
-    return false;
+    return -1; // Aucune collision
 }
 
 // Nouvelle fonction pour réinitialiser un serpent IA
